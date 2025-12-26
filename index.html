@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonsai Code</title>
+    
+    <link rel="stylesheet" id="hljs-theme" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root { 
+            --bg: #ffffff; --text: #1a1a1a; --accent: #777; --border: #eaeaea; 
+            --code-bg: #f8f8f8; --selection: #d0d0d0; --caret: #000; --header-bg: #ffffff;
+            --modal-bg: #ffffff; --hover-bg: #f0f0f0;
+        }
+
+        [data-theme="dark"] {
+            --bg: #1a1a1a; --text: #e0e0e0; --accent: #999; --border: #333;
+            --code-bg: #252525; --selection: #444; --caret: #fff; --header-bg: #1a1a1a;
+            --modal-bg: #2a2a2a; --hover-bg: #3a3a3a;
+        }
+        
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; height: 60px; background: var(--header-bg); position: relative; z-index: 10; }
+        .brand { font-weight: 600; color: var(--text); text-decoration: none; font-size: 1.1rem; }
+        .brand span { color: #0000FF; }
+        .controls { display: flex; align-items: center; gap: 8px; }
+        .controls button { background: none; border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; color: var(--text); display: flex; align-items: center; gap: 5px; }
+
+        #tabs-container { display: flex; background: var(--code-bg); border-bottom: 1px solid var(--border); padding: 0 10px; height: 40px; align-items: flex-end; overflow-x: auto; scrollbar-width: none; }
+        .tab { padding: 8px 15px; font-size: 0.85rem; border: 1px solid transparent; border-bottom: none; cursor: pointer; color: var(--accent); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+        .tab.active { background: var(--bg); border-color: var(--border); border-top: 2px solid #0000FF; color: var(--text); font-weight: 500; border-radius: 4px 4px 0 0; position: relative; top: 1px; }
+
+        #main-area { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+        #editor-scroller { position: absolute; inset: 0; overflow: auto; padding: 20px; }
+        .code-wrapper { position: relative; min-height: 100%; width: 100%; }
+
+        .code-layer {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 15px; 
+            line-height: 1.6;
+            letter-spacing: normal;
+            tab-size: 4;
+            margin: 0; 
+            padding: 0; 
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
+            white-space: pre-wrap; 
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #highlight-layer { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; color: var(--text); }
+        #source-input { position: relative; display: block; background: transparent; color: transparent; caret-color: var(--caret); resize: none; outline: none; z-index: 1; overflow: hidden; }
+
+        #preview-layer { display: none; position: absolute; inset: 0; background: var(--bg); padding: 40px; overflow-y: auto; z-index: 10; }
+        #preview-layer.visible { display: block; }
+
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; backdrop-filter: blur(2px); }
+        .modal { position: fixed; top: 15%; left: 50%; transform: translateX(-50%); width: 500px; background: var(--modal-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 15px 50px rgba(0,0,0,0.3); padding: 10px; }
+        #command-list { max-height: 250px; overflow-y: auto; scroll-behavior: smooth; }
+        .command-item { padding: 12px 15px; cursor: pointer; font-size: 0.9rem; border-radius: 4px; display: flex; justify-content: space-between; color: var(--text); }
+        .command-item.selected { background: #0000FF; color: white; }
+        #config-textarea { width: 100%; height: 300px; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); font-family: monospace; padding: 10px; font-size: 0.8rem; }
+        footer { padding: 5px 20px; font-size: 0.75rem; color: var(--accent); border-top: 1px solid var(--border); background: var(--code-bg); display: flex; justify-content: space-between; }
+    </style>
+</head>
+<body onclick="closeAllModals()">
+
+<header>
+    <a href="https://bbonsai.org" class="brand"><span>Bonsai</span> code</a>
+    <div class="controls">
+        <button onclick="toggleTheme()"><i id="theme-icon" class="fa-solid fa-moon"></i></button>
+        <button onclick="event.stopPropagation(); openConfig()"><i class="fa-solid fa-keyboard"></i> Bindings</button>
+        <button onclick="event.stopPropagation(); openPalette()"><i class="fa-solid fa-terminal"></i> Ctrl+K</button>
+        <button onclick="downloadActiveTab()"><i class="fa-solid fa-download"></i></button>
+        <button onclick="toggleView()" id="view-btn"><i class="fa-regular fa-eye"></i> View</button>
+    </div>
+</header>
+
+<div id="tabs-container">
+    <div class="add-tab" style="padding: 8px 15px; cursor: pointer;" onclick="addTab()">+</div>
+</div>
+
+<div id="main-area">
+    <div id="editor-scroller">
+        <div class="code-wrapper">
+            <pre id="highlight-layer" class="code-layer"><code id="highlight-code" style="padding:0; background:transparent;"></code></pre>
+            <textarea id="source-input" class="code-layer" spellcheck="false" autocomplete="off"></textarea>
+        </div>
+    </div>
+    <div id="preview-layer"></div>
+</div>
+
+<div id="palette-overlay" class="overlay">
+    <div class="modal" onclick="event.stopPropagation()">
+        <input type="text" id="command-input" placeholder="Search commands..." style="width:100%; padding:12px; background:transparent; color:var(--text); border:none; border-bottom:1px solid var(--border); outline:none;">
+        <div id="command-list"></div>
+    </div>
+</div>
+
+<div id="config-overlay" class="overlay">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 style="margin: 0 0 10px 0; font-size: 1rem;">Key Bindings</h3>
+        <textarea id="config-textarea" spellcheck="false"></textarea>
+        <div style="margin-top:10px; display:flex; justify-content:space-between;">
+            <button onclick="resetDefaults()" style="color:red; border:none; background:none; cursor:pointer;">Reset</button>
+            <button onclick="saveConfig()" style="background:#0000FF; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;">Save</button>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <span id="status">Ready</span>
+    <span id="mode-indicator">Mode: Code</span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/markdown-it/dist/markdown-it.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+
+<script>
+    const defaultCmds = [
+        { label: "File: New Tab", cmd: "addTab", key: "Alt+N" },
+        { label: "File: Download", cmd: "downloadActiveTab", key: "Alt+S" },
+        { label: "View: Theme", cmd: "toggleTheme", key: "Alt+D" },
+        { label: "Text: Upper", cmd: "transformUpper", key: "" },
+        { label: "System: Share", cmd: "copyLink", key: "Alt+L" }
+    ];
+
+    let state = { theme: 'light', activeTab: 0, tabs: [{ name: "index.md", content: "# Bonsai Studio\nReady to code." }], commands: defaultCmds };
+    let selectedIndex = 0;
+
+    const input = document.getElementById('source-input');
+    const highlightCode = document.getElementById('highlight-code');
+
+    function syncHighlight() {
+        const tab = state.tabs[state.activeTab];
+        tab.content = input.value;
+        const lang = tab.name.endsWith('.md') ? 'markdown' : (tab.name.split('.').pop() || 'plaintext');
+        document.getElementById('view-btn').style.display = tab.name.endsWith('.md') ? 'flex' : 'none';
+        
+        let code = input.value;
+        if(code[code.length-1] === "\n") code += " ";
+        highlightCode.textContent = code;
+        hljs.highlightElement(highlightCode);
+
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+        saveState();
+    }
+
+    function openPalette() {
+        document.getElementById('palette-overlay').style.display = 'block';
+        document.getElementById('command-input').value = ''; selectedIndex = 0; renderCommands();
+        setTimeout(() => document.getElementById('command-input').focus(), 50);
+    }
+    function renderCommands() {
+        const query = document.getElementById('command-input').value.toLowerCase();
+        const filtered = state.commands.filter(c => c.label.toLowerCase().includes(query));
+        const list = document.getElementById('command-list'); list.innerHTML = '';
+        if (selectedIndex >= filtered.length) selectedIndex = Math.max(0, filtered.length - 1);
+        filtered.forEach((c, i) => {
+            const item = document.createElement('div');
+            item.className = `command-item ${i === selectedIndex ? 'selected' : ''}`;
+            item.innerHTML = `${c.label} <span style="opacity:0.4; font-size:0.7rem;">${c.key}</span>`;
+            item.onclick = () => { executeCommand(c.cmd); closeAllModals(); };
+            list.appendChild(item);
+            if (i === selectedIndex) item.scrollIntoView({ block: 'nearest' });
+        });
+    }
+    function executeCommand(name) { if (window[name]) window[name](); }
+    function closeAllModals() { document.querySelectorAll('.overlay').forEach(o => o.style.display = 'none'); input.focus(); }
+    function openConfig() { document.getElementById('config-textarea').value = JSON.stringify(state.commands, null, 2); document.getElementById('config-overlay').style.display = 'block'; }
+    function saveConfig() { try { state.commands = JSON.parse(document.getElementById('config-textarea').value); closeAllModals(); saveState(); } catch(e) { alert("JSON Error"); } }
+    function resetDefaults() { if(confirm("Reset?")) { state.commands = defaultCmds; saveConfig(); } }
+
+    function switchTab(i) {
+        state.activeTab = (i + state.tabs.length) % state.tabs.length;
+        input.value = state.tabs[state.activeTab].content;
+        syncHighlight(); renderTabs();
+    }
+    function renderTabs() {
+        document.querySelectorAll('.tab').forEach(t => t.remove());
+        state.tabs.forEach((tab, i) => {
+            const el = document.createElement('div');
+            el.className = `tab ${i === state.activeTab ? 'active' : ''}`;
+            el.innerHTML = `<span>${tab.name}</span><i class="fa-solid fa-xmark" onclick="closeTab(event, ${i})"></i>`;
+            el.onclick = () => switchTab(i);
+            document.getElementById('tabs-container').insertBefore(el, document.querySelector('.add-tab'));
+        });
+    }
+    function addTab() { const n = prompt("Name:", "new.md"); if(n) { state.tabs.push({ name: n, content: "" }); switchTab(state.tabs.length - 1); } }
+    function closeTab(e, i) { e.stopPropagation(); if(state.tabs.length > 1) { state.tabs.splice(i, 1); switchTab(0); } }
+
+    function toggleTheme() {
+        state.theme = state.theme === 'light' ? 'dark' : 'light';
+        document.body.setAttribute('data-theme', state.theme);
+        document.getElementById('theme-icon').className = state.theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+        document.getElementById('hljs-theme').href = state.theme === 'dark' ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css";
+        saveState();
+    }
+    function toggleView() {
+        const v = document.getElementById('preview-layer').classList.toggle('visible');
+        if (v) document.getElementById('preview-layer').innerHTML = window.markdownit({html:true}).render(input.value);
+    }
+    function transformUpper() { const s = input.selectionStart, e = input.selectionEnd; input.value = input.value.slice(0,s) + input.value.slice(s,e).toUpperCase() + input.value.slice(e); syncHighlight(); }
+    function downloadActiveTab() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([state.tabs[state.activeTab].content], {type:'text/plain'})); a.download = state.tabs[state.activeTab].name; a.click(); }
+    function saveState() { window.history.replaceState(null, null, '#' + LZString.compressToEncodedURIComponent(JSON.stringify(state))); }
+    function copyLink() { navigator.clipboard.writeText(window.location.href); alert("Copied!"); }
+
+    window.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openPalette(); }
+        if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); switchTab(state.activeTab + 1); }
+        if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); switchTab(state.activeTab - 1); }
+        if (document.getElementById('palette-overlay').style.display === 'block') {
+            const filtered = state.commands.filter(c => c.label.toLowerCase().includes(document.getElementById('command-input').value.toLowerCase()));
+            if (e.key === 'ArrowDown') { e.preventDefault(); selectedIndex = (selectedIndex + 1) % filtered.length; renderCommands(); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); selectedIndex = (selectedIndex - 1 + filtered.length) % filtered.length; renderCommands(); }
+            if (e.key === 'Enter' && filtered[selectedIndex]) { executeCommand(filtered[selectedIndex].cmd); closeAllModals(); }
+            if (e.key === 'Escape') closeAllModals();
+        }
+    });
+
+    document.getElementById('command-input').addEventListener('input', () => { selectedIndex = 0; renderCommands(); });
+    input.addEventListener('input', syncHighlight);
+
+    if (window.location.hash) { const d = LZString.decompressFromEncodedURIComponent(window.location.hash.substring(1)); if (d) { state = JSON.parse(d); document.body.setAttribute('data-theme', state.theme); } }
+    renderTabs(); input.value = state.tabs[state.activeTab].content; syncHighlight();
+</script>
+</body>
+</html>
